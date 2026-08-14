@@ -18,6 +18,30 @@ class FakeCourses:
 
 
 class TeleAgentPromptTest(unittest.TestCase):
+    def test_chat_json_collects_streamed_ark_content(self):
+        class StreamResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def __iter__(self):
+                chunks = [
+                    '{"choices":[{"delta":{"content":"{\\\"title\\\":\\\"课程\\\","}}]}',
+                    '{"choices":[{"delta":{"content":"\\\"summary\\\":\\\"摘要\\\",\\\"turns\\\":[]}"}}]}',
+                ]
+                for chunk in chunks:
+                    yield f"data: {chunk}\n".encode("utf-8")
+                yield b"data: [DONE]\n"
+
+        service = AIService()
+        service.api_key = "test-only"
+        with patch("platform_services.urlopen", return_value=StreamResponse()):
+            result = service._chat_json("test", stream=True)
+        self.assertEqual("课程", result["title"])
+        self.assertEqual("摘要", result["summary"])
+
     def test_prompt_requires_education_skill_and_fixed_ids(self):
         prompt = TeleAgentService._prompt(
             "zyk_run_123",

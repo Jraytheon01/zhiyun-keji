@@ -1,7 +1,9 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
+from platform_services import CourseRepository
 from platform_store import PlatformStore
 
 
@@ -39,6 +41,20 @@ class PlatformStoreTest(unittest.TestCase):
         self.assertEqual(lin, {"990101", "990102"})
         self.assertEqual(yu, {"990201"})
         self.assertFalse(lin & yu)
+
+    def test_mysql_course_does_not_change_platform_learner_id(self):
+        repository = CourseRepository(self.store)
+        repository.host = "mysql"
+        repository.user = "test"
+        repository.database = "zhiyun_learning"
+        with patch.object(repository, "_mysql_learners", return_value=[{
+            "learner_id": "1001-1001", "user_id": 1001,
+            "phone": "13800001001", "display_name": "derived",
+            "grade": "", "subject": "", "source": "mysql",
+        }]):
+            learner = repository.learner("1001")
+        self.assertEqual("1001", learner["learner_id"])
+        self.assertEqual("测试学生甲", learner["display_name"])
 
     def test_learning_result_is_idempotent_and_creates_evidence(self):
         run = self.store.create_run({

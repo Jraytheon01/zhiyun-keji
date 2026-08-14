@@ -313,6 +313,7 @@
   }
 
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+  let audioImporting = false;
 
   function setupAudioDropzone() {
     const card = $$(".upload-card").find((item) => item.textContent.includes("上传音频"));
@@ -354,15 +355,16 @@
 
   async function importDemoAudio(file) {
     if (!file) return;
+    if (audioImporting) return toast("当前课程仍在生成，请等待完成后再添加下一门课", true);
     const supported = /\.(mp3|wav|m4a|aac|flac|mp4|mov)$/i.test(file.name) || /^(audio|video)\//.test(file.type || "");
     if (!supported) return toast("请选择常见音频或视频文件", true);
     const inferredTitle = file.name.replace(/\.(mp3|wav|m4a|aac|flac|mp4|mov)$/i, "").replace(/_/g, " ").trim();
     const titleField = $(".js-audio-title");
     if (titleField && !titleField.value.trim()) titleField.value = inferredTitle;
+    audioImporting = true;
     renderAudioProgress(file.name, 0);
     try {
       await wait(650); renderAudioProgress(file.name, 1);
-      await wait(900); renderAudioProgress(file.name, 2);
       const course = await api("/api/courses/import-audio-demo", {
         method: "POST", body: JSON.stringify({
           learner_id: state.learnerId,
@@ -378,6 +380,7 @@
       toast(`《${course.title}》已加入课程`);
       await wait(900); go("course-detail");
     } catch (error) { renderAudioProgress(file.name, 0, error.message); }
+    finally { audioImporting = false; }
   }
 
   function installImportComposer(source) {

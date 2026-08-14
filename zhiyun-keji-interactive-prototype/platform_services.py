@@ -150,9 +150,14 @@ class CourseRepository:
             if not local_match:
                 local_match = merged.get(learner_id)
             if local_match:
+                # Keep the no-login platform identity stable after this learner's
+                # first course appears in MySQL. The legacy source query derives a
+                # composite id, which must not replace the local learner id.
+                item["learner_id"] = str(local_match["learner_id"])
                 item["display_name"] = local_match.get("display_name") or item.get("display_name")
                 item["grade"] = local_match.get("grade") or item.get("grade")
                 item["subject"] = local_match.get("subject") or item.get("subject")
+                learner_id = str(item["learner_id"])
             merged[learner_id] = item
         return list(merged.values())
 
@@ -474,6 +479,7 @@ class AIService:
         temperature: float = 0.1,
         timeout_seconds: int = 90,
         max_tokens: int | None = None,
+        stream: bool = False,
     ) -> dict[str, Any]:
         request_body: dict[str, Any] = {
             "model": self.model,
@@ -481,6 +487,8 @@ class AIService:
             "temperature": temperature,
             "response_format": {"type": "json_object"},
         }
+        if stream:
+            request_body["stream"] = True
         if max_tokens:
             request_body["max_tokens"] = int(max_tokens)
         request = Request(
@@ -489,12 +497,29 @@ class AIService:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json; charset=utf-8",
-                "Accept": "application/json",
+                "Accept": "text/event-stream" if stream else "application/json",
             },
             method="POST",
         )
         try:
             with urlopen(request, timeout=timeout_seconds) as response:
+                if stream:
+                    parts: list[str] = []
+                    for raw_line in response:
+                        line = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            break
+                        event = json.loads(payload)
+                        delta = event.get("choices", [{}])[0].get("delta", {})
+                        if delta.get("content"):
+                            parts.append(str(delta["content"]))
+                    content = "".join(parts)
+                    if not content:
+                        raise RuntimeError("AI 流式响应未返回课程内容")
+                    return parse_json_object(content)
                 data = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
@@ -565,6 +590,7 @@ class AIService:
             temperature=0.55,
             timeout_seconds=300,
             max_tokens=16384,
+            stream=True,
         )
         turns = result.get("turns") or []
         if not isinstance(turns, list):
