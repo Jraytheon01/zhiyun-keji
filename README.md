@@ -23,7 +23,7 @@
 | 原会议 MCP | `8766` | 可并行保留，不是教育链路依赖 |
 | 教育 Ingest API | `8769` | 只处理教育课程的录音入库与索引 |
 | MySQL | `3307` | 独立数据库 `zhiyun_learning` |
-| Milvus | `19530` | 独立使用 `zyk_learning_` 集合前缀 |
+| Milvus | `19530` | 独立数据库 `zhiyun_learning`，集合前缀 `zyk_learning_` |
 
 `8766` 与 `8768` 不冲突，TeleAgent 可以同时启用两个 MCP。教育 Skill 明确使用 `zhiyun-learning_*` 工具。
 
@@ -51,7 +51,7 @@ Set-Location 'E:\AI公众\zhiyun-keji'
 
 启动脚本会：
 
-- 复用 MySQL 与 Milvus 服务进程，但使用独立的 `zhiyun_learning` 数据库和 `zyk_learning_` 集合；
+- 复用 MySQL 与 Milvus 服务进程，但两者都使用独立的 `zhiyun_learning` 数据库；Milvus 集合另加 `zyk_learning_` 前缀；
 - 构建并启动教育专用 MCP、Ingest API 与 Worker；
 - 不启动、不查询会议 MCP 的数据链路；
 - 启动项目 Receiver 与平台。

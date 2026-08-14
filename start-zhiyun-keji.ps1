@@ -22,7 +22,13 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     if (Test-Path -LiteralPath $learningComposeFile) {
         # MCP, ingest API and worker all use the isolated zhiyun_learning database
         # and zyk_learning_ Milvus collections.
-        docker compose -f $learningComposeFile up -d --build
+        docker compose -f $learningComposeFile build
+        docker compose -f $learningComposeFile run --rm zhiyun-learning-mcp `
+            python -m zhiyun_learning_mcp.ensure_milvus_database
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to initialize the isolated Zhiyun Learning Milvus database.'
+        }
+        docker compose -f $learningComposeFile up -d
         docker compose -f $learningComposeFile exec -T zhiyun-learning-mcp `
             python -m zhiyun_learning_mcp.migrate
         if ($LASTEXITCODE -ne 0) {
