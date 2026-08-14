@@ -100,6 +100,10 @@ class TeleAgentPromptTest(unittest.TestCase):
         self.assertIn("【录音时长】5—20 分钟", prompt)
         self.assertIn("【说话人数】3 人", prompt)
         self.assertIn("2160—2880", prompt)
+        self.assertIn("口语特征须覆盖至少 40% 的发言轮次", prompt)
+        self.assertIn("打断与抢话", prompt)
+        self.assertIn("同一说话人连续出现多条短 turn 成为常态", prompt)
+        self.assertIn("角色化口语差异", prompt)
 
 
 if __name__ == "__main__":
