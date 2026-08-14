@@ -1,0 +1,20 @@
+{
+  "host": "0.0.0.0",
+  "port": 18766,
+  "bridge_token": "",
+  "task_timeout_seconds": 900,
+  "pickup_timeout_seconds": 30,
+  "default_audience": "项目团队与管理层",
+  "default_style": "商务简约",
+  "default_slides": 7,
+  "default_output": "展示PPT.pptx",
+  "job_db": "",
+  "dry_run": false,
+  "display_bridge_url": "http://192.168.x.x:18767",
+  "display_bridge_token": "",
+  "display_bridge_timeout_seconds": 10,
+  "display_bridge_retries": 3,
+  "display_bridge_retry_delay_seconds": 1.5,
+  "display_bridge_retry_max_delay_seconds": 20,
+  "display_bridge_trigger_delay_seconds": 0
+}

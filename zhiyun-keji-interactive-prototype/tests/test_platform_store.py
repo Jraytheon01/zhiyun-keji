@@ -1,0 +1,126 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
+
+from platform_store import PlatformStore
+
+
+class PlatformStoreTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.store = PlatformStore(Path(self.temp.name) / "test.sqlite3")
+        self.store.upsert_local_learner({
+            "learner_id": "1001", "phone": "13800001001",
+            "display_name": "测试学生甲", "grade": "初二", "subject": "数学",
+        })
+        self.store.upsert_local_learner({
+            "learner_id": "1002", "phone": "13800001002",
+            "display_name": "测试学生乙", "grade": "初一", "subject": "数学",
+        })
+        self.store.insert_local_course("1001", {
+            "course_id": "990101", "title": "测试课程甲", "summary": "测试摘要甲",
+            "segments": [{"speaker": "说话人1", "content": "测试内容甲"}],
+        })
+        self.store.insert_local_course("1001", {
+            "course_id": "990102", "title": "测试课程乙", "summary": "测试摘要乙",
+            "segments": [{"speaker": "说话人1", "content": "测试内容乙"}],
+        })
+        self.store.insert_local_course("1002", {
+            "course_id": "990201", "title": "测试课程丙", "summary": "测试摘要丙",
+            "segments": [{"speaker": "说话人1", "content": "测试内容丙"}],
+        })
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_courses_are_isolated_by_learner_without_login_layer(self):
+        lin = {item["course_id"] for item in self.store.local_courses("1001")}
+        yu = {item["course_id"] for item in self.store.local_courses("1002")}
+        self.assertEqual(lin, {"990101", "990102"})
+        self.assertEqual(yu, {"990201"})
+        self.assertFalse(lin & yu)
+
+    def test_learning_result_is_idempotent_and_creates_evidence(self):
+        run = self.store.create_run({
+            "run_id": "zyk_test_run", "learner_id": "1001", "phone": "13800001001",
+            "course_id": "990101", "course_title": "一次函数图像的平移",
+            "action": "learning_check", "focus": "左右平移方向", "parameters": {},
+            "prompt": "test", "state": "sent",
+        })
+        self.assertEqual(run["state"], "sent")
+        result = {
+            "summary": "完成两题",
+            "questions": [
+                {"knowledge_point": "左右平移方向", "correct": True},
+                {"knowledge_point": "左右平移方向", "correct": False},
+            ],
+        }
+        first = self.store.apply_learning_result("zyk_test_run", result)
+        second = self.store.apply_learning_result("zyk_test_run", result)
+        self.assertFalse(first["idempotent"])
+        self.assertTrue(second["idempotent"])
+        growth = self.store.growth("1001")
+        self.assertEqual(len(growth["plans"]), 1)
+        self.assertEqual(growth["mastery"][0]["evidence_count"], 1)
+        self.assertEqual(growth["mastery"][0]["level"], "待巩固")
+
+    def test_learning_events_do_not_leak_to_other_learner(self):
+        self.store.add_event("1001", "990101", "course_reviewed", "完成课程复盘")
+        self.assertEqual(len(self.store.growth("1001")["events"]), 1)
+        self.assertEqual(len(self.store.growth("1002")["events"]), 0)
+
+    def test_clearing_archive_chat_keeps_other_learner_history(self):
+        self.store.add_archive_chat_message("1001", "user", "我的问题")
+        self.store.add_archive_chat_message("1001", "assistant", "学习建议")
+        self.store.add_archive_chat_message("1002", "user", "另一位学习者的问题")
+        self.assertEqual(self.store.clear_archive_chat("1001"), 2)
+        self.assertEqual(self.store.archive_chat("1001"), [])
+        self.assertEqual(len(self.store.archive_chat("1002")), 1)
+
+
+    def test_teleagent_session_id_is_persisted_for_visible_handoff(self):
+        self.store.create_run({
+            "run_id": "zyk_session_run", "learner_id": "1001", "phone": "13800001001",
+            "course_id": "990101", "course_title": "course", "action": "course_review",
+            "focus": "focus", "parameters": {}, "prompt": "test", "state": "running",
+        })
+        run = self.store.update_run(
+            "zyk_session_run", bridge_event_id="zyk_session_run",
+            bridge_session_id="ses_visible_123",
+        )
+        self.assertEqual(run["bridge_session_id"], "ses_visible_123")
+
+    def test_completing_plan_records_reflection_without_changing_mastery(self):
+        self.store.upsert_mastery("1001", "左右平移方向", False, "客观作答证据")
+        before = self.store.growth("1001")["mastery"][0]
+        plan = self.store.add_plan(
+            "1001", "左右平移方向", "关键点验证练习", "错题证据", 10, "zyk_source"
+        )
+        completed = self.store.complete_plan("1001", plan["plan_id"], "完成后仍需复测")
+        after = self.store.growth("1001")["mastery"][0]
+        self.assertEqual(completed["status"], "done")
+        self.assertEqual(before["level"], after["level"])
+        self.assertEqual(before["evidence_count"], after["evidence_count"])
+        growth = self.store.growth("1001")
+        self.assertTrue(any(item["memory_type"] == "plan_reflection" for item in growth["memories"]))
+
+    def test_repeated_memory_keeps_each_run_as_evidence(self):
+        analysis = {"insights": [], "memory_candidates": [{
+            "memory_type": "semantic", "title": "因式分解需写两个根",
+            "content": "能在提示后意识到两个因式需要分别等于零。",
+            "knowledge_point": "因式分解法", "confidence": 0.72,
+            "evidence_turn_indexes": [1, 2],
+        }]}
+        first_run = {"run_id": "run_one", "learner_id": "1001", "course_id": "990101"}
+        second_run = {"run_id": "run_two", "learner_id": "1001", "course_id": "990102"}
+        self.store.save_dialogue_analysis(first_run, analysis)
+        self.store.save_dialogue_analysis(second_run, analysis)
+        memories = self.store.recent_learning_memories("1001")
+        memory = next(item for item in memories if item["knowledge_point"] == "因式分解法")
+        self.assertEqual(memory["evidence_count"], 2)
+        self.assertEqual({item["run_id"] for item in memory["evidence_sources"]}, {"run_one", "run_two"})
+        self.assertEqual(memory["status"], "active")
+
+
+if __name__ == "__main__":
+    unittest.main()

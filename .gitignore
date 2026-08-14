@@ -1,0 +1,11 @@
+**/.env
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/logs/
+**/*.log
+integrations/teleagent-local-receiver/scripts/.auto_ppt_jobs.db*
+zhiyun-keji-interactive-prototype/data/
+# Historical meeting-service copy retained locally for reference only. The public
+# education repository uses services/zhiyun-learning-mcp exclusively.
+services/meeting-assistant-mcp/

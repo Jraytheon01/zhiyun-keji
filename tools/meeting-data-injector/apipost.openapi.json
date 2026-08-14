@@ -1,0 +1,92 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Toby AI 展会本机联调",
+    "version": "1.0.0",
+    "description": "先通知 ingest，等待演示缓冲时间后，再触发 Bridge。两个请求共用 meeting_id。"
+  },
+  "paths": {
+    "/api/v1/ingest/notifications": {
+      "post": {
+        "summary": "1. 通知 ingest 处理会议",
+        "servers": [{"url": "http://127.0.0.1:8769"}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/IngestNotification"},
+              "example": {
+                "phone": "13800001001",
+                "meeting_id": "990001001",
+                "operation": "upsert",
+                "transcript_status": "created",
+                "summary_status": "created"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {"description": "ingest job accepted"},
+          "422": {"description": "invalid notification"}
+        }
+      }
+    },
+    "/events/recording-completed": {
+      "post": {
+        "summary": "2. 等待后触发 Bridge",
+        "description": "展会时由上游控制等待时间，再发送此请求。event_id 是幂等键。",
+        "servers": [{"url": "http://192.168.0.137:18766"}],
+        "parameters": [{
+          "name": "X-Bridge-Token",
+          "in": "header",
+          "required": false,
+          "schema": {"type": "string"},
+          "description": "仅在 Bridge 配置 token 时填写"
+        }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/BridgeEvent"},
+              "example": {
+                "event_id": "expo-990001001-v1",
+                "recording_id": "990001001",
+                "completed_at": "2026-08-13T13:00:00+08:00",
+                "source": "recorder-backend-apipost"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {"description": "new Bridge job accepted"},
+          "200": {"description": "duplicate event_id returned without duplicate execution"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "IngestNotification": {
+        "type": "object",
+        "required": ["phone", "meeting_id", "transcript_status", "summary_status"],
+        "properties": {
+          "phone": {"type": "string"},
+          "meeting_id": {"type": "string"},
+          "operation": {"type": "string", "enum": ["upsert", "delete"], "default": "upsert"},
+          "transcript_status": {"type": "string", "enum": ["none", "created", "updated"]},
+          "summary_status": {"type": "string", "enum": ["none", "created", "updated"]}
+        }
+      },
+      "BridgeEvent": {
+        "type": "object",
+        "required": ["event_id", "recording_id"],
+        "properties": {
+          "event_id": {"type": "string"},
+          "recording_id": {"type": "string"},
+          "completed_at": {"type": "string", "format": "date-time"},
+          "source": {"type": "string"}
+        }
+      }
+    }
+  }
+}

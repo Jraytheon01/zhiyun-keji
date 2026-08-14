@@ -1,0 +1,15 @@
+interface:
+  display_name: "Toby.AI录音卡助手"
+  short_description: "查询会议信息和摘要内容并自动生成PPT及后续办公交付物。"
+  default_prompt: |
+    请使用 Toby.AI录音卡助手，直接为我生成最近一场会议的 PPT。采用默认参数：排版 PPT（可编辑 .pptx）、受众为项目团队和管理层、商务简约风格、约7页。不要向我提问或等待确认；直接选择最近会议，优先读取已有纪要，纪要不可用时读取逐字稿，然后调用PPT能力生成并返回文件。
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "meeting-assistant"
+      description: "调用当前用户授权范围内的 meeting-assistant MCP 工具"
+      transport: "streamable_http"
+      url: "http://127.0.0.1:8766/mcp"
+
+policy:
+  allow_implicit_invocation: true

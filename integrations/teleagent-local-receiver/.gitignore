@@ -1,0 +1,8 @@
+config.json
+scripts/.auto_ppt_jobs.db*
+scripts/.moben_token
+scripts/.moben_state
+scripts/.moben_gui_config
+__pycache__/
+*.pyc
+*.log

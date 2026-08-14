@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+  id                 BIGINT AUTO_INCREMENT PRIMARY KEY,
+  recording_id       VARCHAR(255) NOT NULL,
+  phone              VARCHAR(32)  NOT NULL,
+  transcript_status  VARCHAR(32)  NOT NULL DEFAULT 'none',
+  summary_status     VARCHAR(32)  NOT NULL DEFAULT 'none',
+  source_hash        CHAR(64)     NULL,
+  status             VARCHAR(32)  NOT NULL DEFAULT 'pending',
+  outcome            VARCHAR(32)  NULL,
+  attempts           INT          NOT NULL DEFAULT 0,
+  locked_at          TIMESTAMP    NULL,
+  next_attempt_at    TIMESTAMP    NULL,
+  last_error         TEXT         NULL,
+  payload            JSON         NOT NULL,
+  created_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  processed_at       TIMESTAMP    NULL,
+  INDEX idx_ingest_jobs_pending (status, next_attempt_at, locked_at, id),
+  INDEX idx_ingest_jobs_source (recording_id, source_hash, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

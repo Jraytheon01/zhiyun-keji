@@ -1,0 +1,4 @@
+.env.local
+meeting.local.json
+__pycache__/
+*.pyc

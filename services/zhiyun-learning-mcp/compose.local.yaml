@@ -1,0 +1,47 @@
+name: zhiyun-learning-local
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  env_file:
+    - ../../zhiyun-keji-interactive-prototype/.env
+  environment: &education-env
+    MYSQL_HOST: mysql
+    MYSQL_PORT: "3306"
+    MYSQL_DATABASE: zhiyun_learning
+    MILVUS_COLLECTION_PREFIX: zyk_learning_
+    PLATFORM_PUBLIC_URL: http://host.docker.internal:18910
+  restart: unless-stopped
+  networks:
+    - meeting-assistant
+
+services:
+  zhiyun-learning-mcp:
+    <<: *app
+    command: ["python", "-m", "zhiyun_learning_mcp.mcp_server"]
+    environment:
+      <<: *education-env
+      MCP_PORT: "8768"
+    ports:
+      - "0.0.0.0:8768:8768"
+
+  zhiyun-learning-ingest-api:
+    <<: *app
+    command: ["python", "-m", "zhiyun_learning_mcp.ingest_api"]
+    environment:
+      <<: *education-env
+      INGEST_API_PORT: "8769"
+    ports:
+      - "0.0.0.0:8769:8769"
+
+  zhiyun-learning-ingest-worker:
+    <<: *app
+    command: ["python", "-m", "zhiyun_learning_mcp.ingest_worker"]
+    environment:
+      <<: *education-env
+
+networks:
+  meeting-assistant:
+    external: true
+    name: meeting-assistant_default

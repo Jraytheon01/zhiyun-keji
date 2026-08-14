@@ -1,0 +1,34 @@
+{
+  "meeting_id": 990001001,
+  "user_id": 1001,
+  "phone": "13800001001",
+  "title": "Toby AI 展会演示会议",
+  "create_time": "2026-08-13 13:00:00",
+  "summary": "项目团队确认展会演示流程。录音转写完成后，上游先通知 ingest，等待会议数据处理完成，再调用 Bridge。Bridge 将固定 Prompt 转发到展示电脑，由 TeleAgent 自动生成默认风格 PPT。",
+  "segments": [
+    {
+      "begin_time": 0,
+      "end_time": 18000,
+      "speaker": "主持人",
+      "content": "今天确认 Toby AI 录音卡到 TeleAgent 自动生成会议 PPT 的展会流程。"
+    },
+    {
+      "begin_time": 18000,
+      "end_time": 42000,
+      "speaker": "产品经理",
+      "content": "上游写入会议和逐字稿后调用 ingest，等待处理窗口结束，再调用 Bridge 服务。"
+    },
+    {
+      "begin_time": 42000,
+      "end_time": 68000,
+      "speaker": "研发负责人",
+      "content": "Bridge 通过局域网把内置 Prompt 发给展示电脑，本地接收器注入 TeleAgent。"
+    },
+    {
+      "begin_time": 68000,
+      "end_time": 92000,
+      "speaker": "项目负责人",
+      "content": "TeleAgent 直接选择最近会议，优先读取纪要，并生成约七页商务简约可编辑 PPT，全程不向用户提问。"
+    }
+  ]
+}

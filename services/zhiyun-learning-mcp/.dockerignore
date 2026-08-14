@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.pytest_cache/
+**/*.m4a
+**/*.mp3
+**/*.wav
+.git/
+.codex_tmp_*
+meeting_assistant_async/tests/
