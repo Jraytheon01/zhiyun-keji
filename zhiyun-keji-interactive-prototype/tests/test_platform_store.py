@@ -80,6 +80,10 @@ class PlatformStoreTest(unittest.TestCase):
         self.assertEqual("1001", learner["learner_id"])
         self.assertEqual("测试学生甲", learner["display_name"])
 
+    def test_physics_topic_overrides_an_inaccurate_default_subject(self):
+        repository = CourseRepository(self.store)
+        self.assertEqual("物理", repository._infer_subject("圆周运动：向心力来源与竖直面绳杆模型"))
+
     def test_learning_result_is_idempotent_and_creates_evidence(self):
         run = self.store.create_run({
             "run_id": "zyk_test_run", "learner_id": "1001", "phone": "13800001001",

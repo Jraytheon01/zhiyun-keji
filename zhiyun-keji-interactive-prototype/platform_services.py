@@ -77,7 +77,10 @@ class CourseRepository:
     @staticmethod
     def _infer_subject(text: str) -> str:
         value = str(text or "")
-        if any(word in value for word in ("物理", "力学", "电磁", "电路", "楞次", "牛顿", "万有引力", "航天")):
+        if any(word in value for word in (
+            "物理", "力学", "电磁", "电路", "楞次", "牛顿", "万有引力", "航天",
+            "圆周运动", "向心力", "向心加速度", "绳模型", "杆模型", "合外力", "加速度",
+        )):
             return "物理"
         if any(word in value for word in ("化学", "元素", "反应", "方程式")):
             return "化学"
@@ -212,7 +215,7 @@ class CourseRepository:
                 "duration_ms": int(row.get("during") or 0),
                 "duration_text": format_duration(row.get("during")),
                 "summary": row.get("abstract_content") or row.get("abstract_text") or "",
-                "subject": metadata.get("subject") or self._infer_subject(f"{title} {row.get('abstract_content') or row.get('abstract_text') or ''}") or learner.get("subject") or "课程",
+                "subject": self._infer_subject(f"{title} {row.get('abstract_content') or row.get('abstract_text') or ''}") or metadata.get("subject") or learner.get("subject") or "课程",
                 "grade": metadata.get("grade") or learner.get("grade") or "",
                 "scene": metadata.get("scene") or "课堂记录",
                 "source_type": metadata.get("source_type") or row.get("device_id") or row.get("file_type") or "course_text",
@@ -273,7 +276,7 @@ class CourseRepository:
             "create_time": row["create_time"].strftime("%Y-%m-%d %H:%M:%S") if row.get("create_time") else "",
             "duration_ms": int(row.get("during") or 0), "duration_text": format_duration(row.get("during")),
             "summary": row.get("abstract_content") or row.get("abstract_text") or "",
-            "subject": metadata.get("subject") or self._infer_subject(f"{title} {row.get('abstract_content') or row.get('abstract_text') or ''}") or learner.get("subject") or "课程",
+            "subject": self._infer_subject(f"{title} {row.get('abstract_content') or row.get('abstract_text') or ''}") or metadata.get("subject") or learner.get("subject") or "课程",
             "grade": metadata.get("grade") or learner.get("grade") or "",
             "scene": metadata.get("scene") or "课堂记录",
             "source_type": metadata.get("source_type") or row.get("device_id") or row.get("file_type") or "course_text",
@@ -331,7 +334,10 @@ class CourseRepository:
         base = re.sub(r"\b20\d{2}[-.]?\d{1,2}[-.]?\d{1,2}\b", "", base).strip(" -—_")
         title = base or "课堂学习记录"
         subject = "数学"
-        if any(word in title for word in ("物理", "力学", "电磁", "电路", "楞次", "牛顿")):
+        if any(word in title for word in (
+            "物理", "力学", "电磁", "电路", "楞次", "牛顿", "圆周运动", "向心力",
+            "向心加速度", "绳模型", "杆模型", "合外力", "加速度",
+        )):
             subject = "物理"
         elif any(word in title for word in ("英语", "English", "阅读", "语法")):
             subject = "英语"

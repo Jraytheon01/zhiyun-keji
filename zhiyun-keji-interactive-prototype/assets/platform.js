@@ -92,7 +92,7 @@
     return `<article class="card course-card platform-course" data-course-id="${esc(course.course_id)}">
       <div class="course-glyph" aria-hidden="true"><span>课</span></div>
       <div class="course-main">
-        <div class="meta-row"><span>${esc(course.subject || "课程")} · ${esc(course.grade || "学习记录")}</span>
+        <div class="meta-row"><span>${esc(course.subject || "课程")}</span>
           <span class="badge ${ready ? "ready" : "pending"}">${ready ? "内容已就绪" : esc(course.status || "处理中")}</span></div>
         <h3>${esc(course.title)}</h3>
         <div class="meta-row"><span>${esc(dateText(course.create_time))}</span><span>${esc(course.duration_text || "时长未记录")}</span>
@@ -223,7 +223,7 @@
     if (courseEyebrow) courseEyebrow.textContent = `课程 · ${course.subject || "学习"} · ${timeText(course.create_time)}`;
     const crumb = $(".crumb");
     if (crumb) crumb.textContent = `课程 / ${course.title}`;
-    $(".page-sub").textContent = `${course.grade || ""}${course.grade ? " · " : ""}${course.duration_text || "时长未记录"} · ${course.scene || "课堂记录"} · 内容已就绪`;
+    $(".page-sub").textContent = `${course.duration_text || "时长未记录"} · ${course.scene || "课堂记录"} · 内容已就绪`;
     state.focus = course.review?.payload?.knowledge_points?.[0]?.name || course.title;
     const reading = $("[data-od-id='course-review']");
     const route = ROUTE();
