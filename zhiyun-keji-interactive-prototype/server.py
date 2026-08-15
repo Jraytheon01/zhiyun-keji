@@ -7,6 +7,8 @@ import mimetypes
 import os
 import re
 import sys
+import threading
+import time
 import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +41,9 @@ class PlatformApp:
         self.memory = LearningMemoryIndex(self.store)
         self.teleagent = TeleAgentService(self.store, self.courses)
         self.write_token = os.environ.get("PLATFORM_WRITE_TOKEN", "")
+        self._import_wakeup = threading.Event()
+        self._import_worker = threading.Thread(target=self._run_import_worker, name="course-import-worker", daemon=True)
+        self._import_worker.start()
 
     def learner_id(self, query: dict[str, list[str]]) -> str:
         requested = str((query.get("learner_id") or [""])[0]).strip()
@@ -69,6 +74,78 @@ class PlatformApp:
             "teleagent_health": teleagent_health,
             "memory_health": self.memory.health(),
         }
+
+    def create_import_job(self, learner_id: str, payload: dict) -> dict:
+        self.courses.learner(learner_id)
+        if not str(payload.get("file_name") or "").strip():
+            raise ValueError("请选择录音文件")
+        request = dict(payload)
+        request["learner_id"] = learner_id
+        request["course_id"] = str(int(time.time() * 1000))
+        job = self.store.create_course_import_job(learner_id, request)
+        self._import_wakeup.set()
+        return job
+
+    def _run_import_worker(self) -> None:
+        while True:
+            job = self.store.claim_course_import_job()
+            if not job:
+                self._import_wakeup.wait(1.0)
+                self._import_wakeup.clear()
+                continue
+            self._process_import_job(job)
+
+    def _process_import_job(self, job: dict) -> None:
+        job_id = str(job["job_id"])
+        payload = dict(job.get("request") or {})
+        learner_id = str(job["learner_id"])
+        try:
+            existing_course_id = str(payload.get("course_id") or "")
+            if existing_course_id:
+                try:
+                    existing = self.courses.detail(learner_id, existing_course_id)
+                    self.store.update_course_import_job(
+                        job_id, state="completed", stage=3,
+                        course_id=existing_course_id,
+                        course_title=str(existing.get("title") or ""), error="",
+                    )
+                    return
+                except KeyError:
+                    pass
+            seed = self.courses.demo_audio_payload(str(payload.get("file_name") or ""))
+            if payload.get("subject"):
+                seed["subject"] = str(payload["subject"])
+            if payload.get("title"):
+                seed["title"] = str(payload["title"])
+            generated, generation_mode = self.ai.generate_demo_course(
+                seed,
+                duration_range=str(payload.get("duration_range") or "under_5"),
+                speaker_mode=str(payload.get("speaker_mode") or "2"),
+            )
+            self.store.update_course_import_job(job_id, state="saving", stage=2)
+            course = self.courses.import_course(learner_id, {
+                **seed,
+                **generated,
+                "course_id": str(payload.get("course_id") or ""),
+                "generation_mode": generation_mode,
+            })
+            self.store.add_event(
+                learner_id, course.get("course_id", ""), "course_added",
+                f"课程《{course.get('title','未命名课程')}》已整理",
+                "课程文字与摘要已经进入课程档案，可以继续复盘。",
+                {"generation_mode": generation_mode},
+            )
+            self.store.update_course_import_job(
+                job_id,
+                state="completed",
+                stage=3,
+                course_id=str(course.get("course_id") or ""),
+                course_title=str(course.get("title") or ""),
+                error="",
+            )
+        except Exception as exc:
+            traceback.print_exc()
+            self.store.update_course_import_job(job_id, state="failed", error=str(exc))
 
 
 APP = PlatformApp()
@@ -122,6 +199,25 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self.json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        split = urlsplit(self.path)
+        path = unquote(split.path)
+        query = parse_qs(split.query)
+        try:
+            match = re.fullmatch(r"/api/courses/([^/]+)", path)
+            if not match:
+                self.json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return
+            learner_id = APP.learner_id(query)
+            deleted = APP.courses.delete_course(learner_id, match.group(1))
+            APP.memory.delete_vectors(deleted.pop("vector_ids", []))
+            self.json_response(HTTPStatus.OK, deleted)
+        except (ValueError, KeyError, PermissionError) as exc:
+            self.json_response(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(exc)})
+        except Exception as exc:
+            traceback.print_exc()
+            self.json_response(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+
     def handle_api_get(self, path: str, query: dict[str, list[str]]) -> None:
         try:
             if path == "/api/health":
@@ -144,6 +240,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/courses":
                 self.json_response(HTTPStatus.OK, {"items": APP.courses.courses(learner_id)})
+                return
+            import_job_match = re.fullmatch(r"/api/courses/import-jobs/([^/]+)", path)
+            if import_job_match:
+                job = APP.store.course_import_job(import_job_match.group(1), learner_id)
+                if not job:
+                    raise KeyError("导入任务不存在")
+                self.json_response(HTTPStatus.OK, job)
                 return
             course_match = re.fullmatch(r"/api/courses/([^/]+)", path)
             if course_match:
@@ -223,29 +326,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/courses/import-audio-demo":
             learner_id = str(payload.get("learner_id") or "")
-            file_name = str(payload.get("file_name") or "")
             if not learner_id:
                 raise ValueError("learner_id is required")
-            seed = APP.courses.demo_audio_payload(file_name)
-            if payload.get("subject"):
-                seed["subject"] = str(payload["subject"])
-            if payload.get("title"):
-                seed["title"] = str(payload["title"])
-            generated, generation_mode = APP.ai.generate_demo_course(
-                seed,
-                duration_range=str(payload.get("duration_range") or "under_5"),
-                speaker_mode=str(payload.get("speaker_mode") or "2"),
-            )
-            course = APP.courses.import_course(learner_id, {
-                **seed, **generated, "generation_mode": generation_mode,
-            })
-            APP.store.add_event(
-                learner_id, course.get("course_id", ""), "course_added",
-                f"课程《{course.get('title','未命名课程')}》已整理",
-                "课程文字与摘要已经进入课程档案，可以继续复盘。",
-                {"generation_mode": generation_mode},
-            )
-            self.json_response(HTTPStatus.CREATED, course)
+            job = APP.create_import_job(learner_id, payload)
+            self.json_response(HTTPStatus.ACCEPTED, job)
             return
         review_match = re.fullmatch(r"/api/courses/([^/]+)/review", path)
         if review_match:

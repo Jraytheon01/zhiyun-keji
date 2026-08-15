@@ -42,6 +42,30 @@ class PlatformStoreTest(unittest.TestCase):
         self.assertEqual(yu, {"990201"})
         self.assertFalse(lin & yu)
 
+    def test_course_import_job_is_durable_and_claimed_once(self):
+        created = self.store.create_course_import_job("1001", {
+            "file_name": "圆周运动.mp3", "duration_range": "under_5", "speaker_mode": "2",
+        })
+        self.assertEqual(created["state"], "queued")
+        claimed = self.store.claim_course_import_job()
+        self.assertEqual(claimed["job_id"], created["job_id"])
+        self.assertEqual(claimed["state"], "generating")
+        self.assertIsNone(self.store.claim_course_import_job())
+        completed = self.store.update_course_import_job(
+            created["job_id"], state="completed", stage=3,
+            course_id="990101", course_title="圆周运动",
+        )
+        self.assertEqual(completed["course_id"], "990101")
+        self.assertEqual(completed["stage"], 3)
+
+    def test_delete_course_removes_only_selected_course_data(self):
+        repository = CourseRepository(self.store)
+        deleted = repository.delete_course("1001", "990101")
+        self.assertTrue(deleted["deleted"])
+        self.assertIsNone(self.store.local_course("1001", "990101"))
+        self.assertIsNotNone(self.store.local_course("1001", "990102"))
+        self.assertIsNotNone(self.store.local_course("1002", "990201"))
+
     def test_mysql_course_does_not_change_platform_learner_id(self):
         repository = CourseRepository(self.store)
         repository.host = "mysql"

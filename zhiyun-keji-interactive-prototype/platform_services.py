@@ -360,6 +360,50 @@ class CourseRepository:
             return self._insert_mysql(learner, normalized)
         raise MySQLUnavailable("共享课程库未配置，课程未保存")
 
+    def delete_course(self, learner_id: str, course_id: str) -> dict[str, Any]:
+        learner = self.learner(learner_id)
+        course = self.detail(learner_id, course_id)
+        if self.mysql_configured and learner.get("phone"):
+            with self.connect() as connection, connection.cursor() as cursor:
+                try:
+                    for table in ("facts", "todos", "chunks"):
+                        cursor.execute(
+                            f"DELETE FROM {table} WHERE recording_id=%s AND phone=%s",
+                            (course_id, learner["phone"]),
+                        )
+                    cursor.execute(
+                        "DELETE FROM recordings WHERE recording_id=%s AND phone=%s",
+                        (course_id, learner["phone"]),
+                    )
+                    cursor.execute(
+                        """DELETE content FROM user_meeting_content content
+                           INNER JOIN user_meeting_info info ON info.id=content.meet_id
+                           WHERE info.id=%s AND info.phone=%s""",
+                        (course_id, learner["phone"]),
+                    )
+                    cursor.execute(
+                        "DELETE FROM ingest_jobs WHERE recording_id=%s AND phone=%s",
+                        (course_id, learner["phone"]),
+                    )
+                    cursor.execute(
+                        """DELETE FROM user_meeting_info WHERE id=%s AND phone=%s
+                           AND status='2' AND (del_flag='0' OR del_flag IS NULL)""",
+                        (course_id, learner["phone"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise KeyError("课程不存在或不可删除")
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
+            self._notify_ingest(learner["phone"], course_id, operation="delete")
+        else:
+            local = self.store.local_course(learner_id, course_id)
+            if not local:
+                raise KeyError("课程不存在或不可删除")
+        vector_ids = self.store.delete_course_data(learner_id, course_id)
+        return {"deleted": True, "course_id": course_id, "title": course.get("title", ""), "vector_ids": vector_ids}
+
     def _insert_mysql(self, learner: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         course_id = str(payload.get("course_id") or int(time.time() * 1000))
         title = str(payload.get("title") or "未命名课程")
@@ -455,12 +499,13 @@ class CourseRepository:
         return self.detail(learner_id, course_id)
 
     @staticmethod
-    def _notify_ingest(phone: str, course_id: str) -> None:
+    def _notify_ingest(phone: str, course_id: str, operation: str = "upsert") -> None:
         base = os.environ.get("INGEST_API_URL", "").strip().rstrip("/")
         if not base:
             return
-        body = {"phone": phone, "meeting_id": course_id, "operation": "upsert",
-                "transcript_status": "created", "summary_status": "created"}
+        body = {"phone": phone, "meeting_id": course_id, "operation": operation,
+                "transcript_status": "none" if operation == "delete" else "created",
+                "summary_status": "none" if operation == "delete" else "created"}
         try:
             http_json("POST", f"{base}/api/v1/ingest/notifications", body, timeout=3)
         except Exception:

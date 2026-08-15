@@ -220,6 +220,23 @@ class PlatformStore:
           created_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_archive_chat_learner ON archive_chat_message(learner_id, created_at ASC);
+        CREATE TABLE IF NOT EXISTS course_import_job (
+          job_id TEXT PRIMARY KEY,
+          learner_id TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          request_json TEXT NOT NULL,
+          state TEXT NOT NULL DEFAULT 'queued',
+          stage INTEGER NOT NULL DEFAULT 0,
+          course_id TEXT NOT NULL DEFAULT '',
+          course_title TEXT NOT NULL DEFAULT '',
+          error TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_course_import_job_state
+          ON course_import_job(state, created_at ASC);
+        CREATE INDEX IF NOT EXISTS idx_course_import_job_learner
+          ON course_import_job(learner_id, created_at DESC);
         """
         with self._lock, self.connect() as connection:
             connection.executescript(schema)
@@ -228,6 +245,101 @@ class PlatformStore:
                 connection.execute(
                     "ALTER TABLE teleagent_run ADD COLUMN bridge_session_id TEXT NOT NULL DEFAULT ''"
                 )
+            connection.execute(
+                "UPDATE course_import_job SET state='queued', stage=0, "
+                "error='', updated_at=? WHERE state IN ('generating','saving')",
+                (now_text(),),
+            )
+
+    def create_course_import_job(self, learner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        job_id = f"import_{uuid.uuid4().hex}"
+        created = now_text()
+        with self._lock, self.connect() as connection:
+            connection.execute(
+                """INSERT INTO course_import_job
+                   (job_id,learner_id,file_name,request_json,state,stage,created_at,updated_at)
+                   VALUES (?,?,?,?,'queued',0,?,?)""",
+                (job_id, learner_id, str(payload.get("file_name") or ""), json_text(payload), created, created),
+            )
+        return self.course_import_job(job_id) or {}
+
+    def course_import_job(self, job_id: str, learner_id: str = "") -> dict[str, Any] | None:
+        with self.connect() as connection:
+            if learner_id:
+                row = connection.execute(
+                    "SELECT * FROM course_import_job WHERE job_id=? AND learner_id=?",
+                    (job_id, learner_id),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT * FROM course_import_job WHERE job_id=?", (job_id,)
+                ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["request"] = json.loads(result.pop("request_json") or "{}")
+        return result
+
+    def claim_course_import_job(self) -> dict[str, Any] | None:
+        with self._lock, self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT job_id FROM course_import_job WHERE state='queued' ORDER BY created_at LIMIT 1"
+            ).fetchone()
+            if not row:
+                return None
+            updated = now_text()
+            cursor = connection.execute(
+                """UPDATE course_import_job SET state='generating',stage=1,error='',updated_at=?
+                   WHERE job_id=? AND state='queued'""",
+                (updated, row["job_id"]),
+            )
+            if cursor.rowcount != 1:
+                return None
+        return self.course_import_job(str(row["job_id"]))
+
+    def update_course_import_job(self, job_id: str, **fields: Any) -> dict[str, Any] | None:
+        allowed = {"state", "stage", "course_id", "course_title", "error"}
+        values = {key: value for key, value in fields.items() if key in allowed}
+        if not values:
+            return self.course_import_job(job_id)
+        values["updated_at"] = now_text()
+        assignments = ",".join(f"{key}=?" for key in values)
+        with self._lock, self.connect() as connection:
+            connection.execute(
+                f"UPDATE course_import_job SET {assignments} WHERE job_id=?",
+                (*values.values(), job_id),
+            )
+        return self.course_import_job(job_id)
+
+    def delete_course_data(self, learner_id: str, course_id: str) -> list[int]:
+        with self._lock, self.connect() as connection:
+            vector_rows = connection.execute(
+                "SELECT vector_id FROM learning_memory WHERE learner_id=? AND course_id=?",
+                (learner_id, course_id),
+            ).fetchall()
+            run_rows = connection.execute(
+                "SELECT run_id FROM teleagent_run WHERE learner_id=? AND course_id=?",
+                (learner_id, course_id),
+            ).fetchall()
+            run_ids = [str(row["run_id"]) for row in run_rows]
+            if run_ids:
+                marks = ",".join("?" for _ in run_ids)
+                connection.execute(f"DELETE FROM learning_memory_evidence WHERE run_id IN ({marks})", run_ids)
+                connection.execute(f"DELETE FROM dialogue_insight WHERE run_id IN ({marks})", run_ids)
+                connection.execute(f"DELETE FROM learning_dialogue_turn WHERE run_id IN ({marks})", run_ids)
+                connection.execute(f"DELETE FROM growth_plan WHERE source_run_id IN ({marks})", run_ids)
+            connection.execute("DELETE FROM learning_memory_evidence WHERE course_id=?", (course_id,))
+            connection.execute("DELETE FROM learning_memory WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM dialogue_insight WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM learning_dialogue_turn WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM teleagent_run WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM learning_event WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM course_review WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+            connection.execute("DELETE FROM growth_summary WHERE learner_id=?", (learner_id,))
+            connection.execute("DELETE FROM local_segment WHERE course_id=?", (course_id,))
+            connection.execute("DELETE FROM local_course WHERE learner_id=? AND course_id=?", (learner_id, course_id))
+        return [int(row["vector_id"]) for row in vector_rows]
 
     def local_learners(self) -> list[dict[str, Any]]:
         with self.connect() as connection:

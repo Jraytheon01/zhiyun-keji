@@ -2,7 +2,7 @@
   "use strict";
 
   const ROUTE = () => location.hash.replace(/^#/, "") || "home";
-  const KEY = { learner: "zyk.learnerId", course: "zyk.courseId", run: "zyk.runId", prompt: "zyk.handoffPrompt" };
+  const KEY = { learner: "zyk.learnerId", course: "zyk.courseId", run: "zyk.runId", prompt: "zyk.handoffPrompt", importJob: "zyk.importJobId" };
   const ACTIONS = {
     course_review: "复盘课程",
     mind_map: "生成思维导图",
@@ -99,7 +99,8 @@
           <span>${esc(course.scene || "课堂记录")}</span><span class="source-tag">${course.source === "mysql" ? "课堂内容" : "导入内容"}</span></div>
       </div>
       <div class="course-side"><button class="btn btn-ghost js-view-course" data-course-id="${esc(course.course_id)}">查看课程</button>
-        <button class="btn btn-secondary js-open-platform-drawer" data-course-id="${esc(course.course_id)}" data-action="course_review">和 TeleAgent 聊聊</button></div>
+        <button class="btn btn-secondary js-open-platform-drawer" data-course-id="${esc(course.course_id)}" data-action="course_review">和 TeleAgent 聊聊</button>
+        <button class="btn btn-delete js-delete-course" data-course-id="${esc(course.course_id)}" data-course-title="${esc(course.title)}" aria-label="删除课程《${esc(course.title)}》">删除</button></div>
     </article>`;
   }
 
@@ -314,6 +315,7 @@
 
   const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   let audioImporting = false;
+  let activeImportPoll = "";
 
   function setupAudioDropzone() {
     const card = $$(".upload-card").find((item) => item.textContent.includes("上传音频"));
@@ -365,7 +367,7 @@
     renderAudioProgress(file.name, 0);
     try {
       await wait(650); renderAudioProgress(file.name, 1);
-      const course = await api("/api/courses/import-audio-demo", {
+      const job = await api("/api/courses/import-audio-demo", {
         method: "POST", body: JSON.stringify({
           learner_id: state.learnerId,
           file_name: file.name,
@@ -375,12 +377,73 @@
           speaker_mode: $(".js-audio-speakers")?.value || "2",
         }),
       });
-      setCourse(course.course_id);
-      renderAudioProgress(file.name, 3);
-      toast(`《${course.title}》已加入课程`);
-      await wait(900); go("course-detail");
-    } catch (error) { renderAudioProgress(file.name, 0, error.message); }
-    finally { audioImporting = false; }
+      localStorage.setItem(KEY.importJob, job.job_id);
+      pollImportJob(job.job_id);
+    } catch (error) { audioImporting = false; renderAudioProgress(file.name, 0, error.message); }
+  }
+
+  async function pollImportJob(jobId) {
+    if (!jobId || (activeImportPoll && activeImportPoll !== jobId)) return;
+    activeImportPoll = jobId;
+    audioImporting = true;
+    try {
+      const job = await api(withLearner(`/api/courses/import-jobs/${encodeURIComponent(jobId)}`));
+      renderAudioProgress(job.file_name || "课程录音", Number(job.stage || 0), job.state === "failed" ? job.error : "");
+      if (job.state === "completed") {
+        localStorage.removeItem(KEY.importJob);
+        activeImportPoll = "";
+        audioImporting = false;
+        state.bootstrap = await api(withLearner("/api/bootstrap"));
+        setCourse(job.course_id);
+        toast(`《${job.course_title || "课程"}》已加入课程`);
+        if (ROUTE() === "add-course") { await wait(700); go("course-detail"); }
+        return;
+      }
+      if (job.state === "failed") {
+        localStorage.removeItem(KEY.importJob);
+        activeImportPoll = "";
+        audioImporting = false;
+        return;
+      }
+      setTimeout(() => pollImportJob(jobId), 1800);
+    } catch (error) {
+      if (String(error.message).includes("任务不存在")) {
+        localStorage.removeItem(KEY.importJob);
+        activeImportPoll = "";
+        audioImporting = false;
+        renderAudioProgress("课程录音", 0, "上一次导入任务已失效，请重新选择文件");
+        return;
+      }
+      toast("正在重新连接课程整理任务", true);
+      setTimeout(() => pollImportJob(jobId), 3000);
+    }
+  }
+
+  function resumeImportJob() {
+    const jobId = localStorage.getItem(KEY.importJob) || "";
+    if (jobId) pollImportJob(jobId);
+  }
+
+  async function deleteCourse(button) {
+    const courseId = String(button.dataset.courseId || "");
+    const title = button.dataset.courseTitle || "这堂课程";
+    if (!courseId || !window.confirm(`确定删除《${title}》吗？\n\n课程文字、摘要及与本课直接关联的互动记录将一并删除。`)) return;
+    button.disabled = true;
+    button.textContent = "删除中";
+    try {
+      await api(withLearner(`/api/courses/${encodeURIComponent(courseId)}`), { method: "DELETE" });
+      state.bootstrap = await api(withLearner("/api/bootstrap"));
+      if (String(state.courseId) === courseId) {
+        state.course = null;
+        setCourse(state.bootstrap.courses[0]?.course_id || "");
+      }
+      hydrateCourses();
+      toast(`《${title}》已删除`);
+    } catch (error) {
+      toast(error.message, true);
+      button.disabled = false;
+      button.textContent = "删除";
+    }
   }
 
   function installImportComposer(source) {
@@ -745,6 +808,8 @@
     document.addEventListener("click", (event) => {
       const view = event.target.closest(".js-view-course");
       if (view) { event.preventDefault(); setCourse(view.dataset.courseId); go("course-detail"); return; }
+      const deleteTrigger = event.target.closest(".js-delete-course");
+      if (deleteTrigger) { event.preventDefault(); deleteCourse(deleteTrigger); return; }
       const related = event.target.closest(".js-related-course");
       if (related) { event.preventDefault(); setCourse(related.dataset.courseId); go("course-detail"); return; }
       const runLink = event.target.closest(".js-open-run");
@@ -833,7 +898,7 @@
       const route = ROUTE();
       if (route === "home") hydrateHome();
       if (route === "courses") hydrateCourses();
-      if (route === "add-course") setupAudioDropzone();
+      if (route === "add-course") { setupAudioDropzone(); resumeImportJob(); }
       if (["course-detail", "course-knowledge", "course-relations", "course-interactions"].includes(route)) await hydrateDetail();
       if (route === "course-transcript") await hydrateTranscript();
       if (route === "teleagent-delivery") await hydrateDelivery();

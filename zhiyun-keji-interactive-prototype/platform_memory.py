@@ -163,6 +163,15 @@ class LearningMemoryIndex:
             self.last_error = str(exc)
             raise RuntimeError(f"长期记忆检索失败：{self.last_error}") from exc
 
+    def delete_vectors(self, vector_ids: list[int]) -> None:
+        if not vector_ids or not self._ensure():
+            return
+        try:
+            values = ",".join(str(int(value)) for value in vector_ids)
+            self._client.delete(collection_name=self.collection, filter=f"id in [{values}]")
+        except Exception as exc:
+            self.last_error = str(exc)
+
     def health(self) -> dict[str, Any]:
         ready = self._ensure()
         return {
