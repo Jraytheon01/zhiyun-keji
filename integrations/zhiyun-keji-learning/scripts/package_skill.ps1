@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $skillRoot = Split-Path -Parent $PSScriptRoot
 $skillFile = Join-Path $skillRoot 'SKILL.md'
-$skillName = 'zhiyun-keji-learning'
+$skillName = -join (0x667A, 0x4E91, 0x8BFE, 0x8FF9, 0x5B66, 0x4E60, 0x52A9, 0x624B | ForEach-Object { [char]$_ })
 $distDir = Join-Path $skillRoot 'dist'
 $buildRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'zhiyun-keji-learning-build-' + [Guid]::NewGuid().ToString('N')

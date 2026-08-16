@@ -953,7 +953,7 @@ class TeleAgentService:
                 action: str, focus: str, parameters: dict[str, Any]) -> str:
         course_id = course.get("course_id", "") if course else ""
         lines = [
-            "请使用“智云课迹学习助手”Skill（$zhiyun-keji-learning）执行本次任务。",
+            "请使用“智云课迹学习助手”执行本次任务。",
             f"action={action}",
             f"course_id={course_id}",
             f"run_id={run_id}",

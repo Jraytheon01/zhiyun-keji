@@ -1,7 +1,7 @@
 interface:
   display_name: "智云课迹学习助手"
   short_description: "基于真实课程证据完成四类学习互动并受控回流"
-  default_prompt: "Use $zhiyun-keji-learning to run the requested course learning scenario from its action and course ID."
+  default_prompt: "使用智云课迹学习助手，根据任务类型和课程 ID 开展本次学习互动。"
 
 dependencies:
   tools:

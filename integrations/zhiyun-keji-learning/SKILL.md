@@ -1,6 +1,6 @@
 ---
-name: zhiyun-keji-learning
-description: 基于智云课迹真实课程证据，在 TeleAgent 中执行课程复盘、思维导图、学习检测或跨课程回顾，并将关键互动受控回流平台 AI。收到包含 $zhiyun-keji-learning、智云课迹、action、course_id 或 run_id 的学习任务时使用。
+name: 智云课迹学习助手
+description: 基于智云课迹真实课程证据，在 TeleAgent 中执行课程复盘、思维导图、学习检测或跨课程回顾，并将关键互动受控回流平台 AI。收到包含智云课迹学习助手、action、course_id 或 run_id 的学习任务时使用。
 ---
 
 # 智云课迹学习助手

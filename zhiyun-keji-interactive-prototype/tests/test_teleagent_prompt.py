@@ -52,7 +52,7 @@ class TeleAgentPromptTest(unittest.TestCase):
             {},
         )
         self.assertIn("智云课迹学习助手", prompt)
-        self.assertIn("$zhiyun-keji-learning", prompt)
+        self.assertNotIn("zhiyun-keji-learning", prompt)
         self.assertIn("action=course_review", prompt)
         self.assertIn("course_id=990101", prompt)
         self.assertIn("run_id=zyk_run_123", prompt)
