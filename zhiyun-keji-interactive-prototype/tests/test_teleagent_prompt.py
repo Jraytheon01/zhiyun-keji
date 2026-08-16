@@ -51,13 +51,38 @@ class TeleAgentPromptTest(unittest.TestCase):
             "左右平移方向",
             {},
         )
-        self.assertIn("Skill：zhiyun-keji-learning", prompt)
+        self.assertIn("智云课迹学习助手", prompt)
+        self.assertIn("$zhiyun-keji-learning", prompt)
+        self.assertIn("action=course_review", prompt)
         self.assertIn("course_id=990101", prompt)
         self.assertIn("run_id=zyk_run_123", prompt)
-        self.assertIn("只使用 zhiyun-learning MCP", prompt)
-        self.assertIn("结束复盘并回流课迹", prompt)
-        self.assertIn("complete_learning_interaction", prompt)
-        self.assertNotIn("meeting-assistant MCP 的", prompt)
+        self.assertIn("focus=左右平移方向", prompt)
+        self.assertNotIn("get_course_summary", prompt)
+        self.assertNotIn("complete_learning_interaction", prompt)
+        self.assertNotIn("meeting-assistant", prompt)
+        self.assertLess(len(prompt), 240)
+
+    def test_prompt_routes_all_four_scenarios_without_tool_choreography(self):
+        for action in ("course_review", "mind_map", "learning_check", "cross_course_review"):
+            with self.subTest(action=action):
+                prompt = TeleAgentService._prompt(
+                    "zyk_run_456",
+                    {"display_name": "小林"},
+                    {"course_id": "990202", "title": "牛顿第二定律"},
+                    action,
+                    "合外力与加速度",
+                    {"question_count": 5, "difficulty": "迁移应用"},
+                )
+                self.assertIn(f"action={action}", prompt)
+                self.assertIn("course_id=990202", prompt)
+                self.assertIn("run_id=zyk_run_456", prompt)
+                self.assertNotIn("MCP", prompt)
+                self.assertNotIn("get_course_", prompt)
+                self.assertNotIn("complete_learning_interaction", prompt)
+                if action == "learning_check":
+                    self.assertIn('parameters={"question_count":5,"difficulty":"迁移应用"}', prompt)
+                else:
+                    self.assertNotIn("parameters=", prompt)
 
     def test_dialogue_analysis_reports_ai_timeout_without_fabricating_results(self):
         service = AIService()

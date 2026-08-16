@@ -50,7 +50,7 @@
 
   async function copyText(value) {
     const text = String(value || "");
-    if (!text) throw new Error("Prompt 尚未生成")
+    if (!text) throw new Error("任务信息尚未生成")
     if (navigator.clipboard?.writeText) {
       try { await navigator.clipboard.writeText(text); return; } catch (_) { /* use the browser compatibility path below */ }
     }
@@ -59,7 +59,7 @@
     area.style.position = "fixed"; area.style.opacity = "0";
     document.body.appendChild(area); area.select();
     const copied = document.execCommand("copy"); area.remove();
-    if (!copied) throw new Error("浏览器未允许复制，请在页面中手动复制 Prompt");
+    if (!copied) throw new Error("浏览器未允许复制，请在页面中手动复制任务信息");
   }
 
   async function api(path, options = {}) {
@@ -501,7 +501,7 @@
     const drawerTitle = $("#drawer-title", scrim);
     if (drawerTitle) drawerTitle.textContent = "和 TeleAgent 聊聊";
     const drawerAction = $(".js-send-now", scrim);
-    if (drawerAction) drawerAction.textContent = "复制本次课程 Prompt 并打开 TeleAgent";
+    if (drawerAction) drawerAction.textContent = "复制任务信息并打开 TeleAgent";
     const quote = $(".drawer-section .quote", scrim);
     if (quote) quote.innerHTML = `<strong>《${esc(course?.title || "近期成长状态")}》</strong><br><small>当前学习者：${esc(state.bootstrap.learner.display_name)} · 重点：${esc(state.focus)}</small>`;
     const drawerNotes = $$(".drawer-section .quote", scrim);
@@ -577,7 +577,7 @@
         await api("/api/teleagent/focus", { method: "POST", body: "{}" });
         toast("本课内容已复制；请在 TeleAgent 新建任务后粘贴发送");
       } catch (focusError) { toast(`本课内容已复制，请手动打开 TeleAgent：${focusError.message}`, true); }
-    } catch (error) { toast(error.message, true); button.disabled = false; button.textContent = "复制本次课程 Prompt 并打开 TeleAgent"; }
+    } catch (error) { toast(error.message, true); button.disabled = false; button.textContent = "复制任务信息并打开 TeleAgent"; }
   }
 
   const stateLabel = (runState) => ({
@@ -615,8 +615,8 @@
         <p>《${esc(run.course_title)}》 · ${esc(ACTIONS[run.action] || "课程探讨")}</p>
         ${run.error ? `<div class="error-box">${esc(run.error)}</div>` : ""}
         ${completed ? `<div class="handoff-complete"><strong>个人学习记录已更新</strong><span>这次提问、理解变化和下一步建议已经进入长期学习档案。</span></div>` : `<ol class="handoff-steps"><li><b>1</b><span><strong>在 TeleAgent 新建任务</strong><small>新会话会出现在 TeleAgent 的历史记录中。</small></span></li><li><b>2</b><span><strong>粘贴刚刚复制的本课内容</strong><small>发送后即可围绕这堂课提问、复盘或自测。</small></span></li><li><b>3</b><span><strong>聊完后发送“结束复盘并回流课迹”</strong><small>稍后回到这里查看本次探讨带来的学习发现。</small></span></li></ol>`}
-        ${prompt && !completed ? `<label class="prompt-preview-label">本次课程 Prompt<textarea class="prompt-preview" readonly>${esc(prompt)}</textarea></label>` : ""}
-        <div class="actions">${!completed ? `<button class="btn btn-primary js-copy-open-teleagent">复制本次课程 Prompt 并打开 TeleAgent</button><button class="btn btn-secondary js-copy-prompt">仅复制 Prompt</button>` : `<button class="btn btn-primary" data-go="teleagent-result">查看本次学习发现</button>`}<button class="btn btn-ghost" data-go="course-detail">回到课程</button></div></article>
+        ${prompt && !completed ? `<label class="prompt-preview-label">本次任务信息<textarea class="prompt-preview" readonly>${esc(prompt)}</textarea></label>` : ""}
+        <div class="actions">${!completed ? `<button class="btn btn-primary js-copy-open-teleagent">复制任务信息并打开 TeleAgent</button><button class="btn btn-secondary js-copy-prompt">仅复制任务信息</button>` : `<button class="btn btn-primary" data-go="teleagent-result">查看本次学习发现</button>`}<button class="btn btn-ghost" data-go="course-detail">回到课程</button></div></article>
         <aside class="card handoff-boundary"><div class="eyebrow">云续成长迹</div><h2>聊完以后，平台继续记得</h2><p>这次提问、理解变化和仍待解决的问题，会成为下一次学习可以继续使用的记录。</p><div class="quote"><strong>不是堆积聊天记录</strong><br>只整理对以后学习真正有帮助的内容，并保留它来自哪堂课、哪次探讨。</div></aside>`;
     };
     const poll = async (count = 0) => {
@@ -837,7 +837,7 @@
       const send = event.target.closest(".js-send-now");
       if (send) { event.preventDefault(); event.stopImmediatePropagation(); submitTeleAgent(send); return; }
       const copyPrompt = event.target.closest(".js-copy-prompt");
-      if (copyPrompt) { event.preventDefault(); copyPrompt.disabled = true; copyText(state.handoffPrompt || sessionStorage.getItem(KEY.prompt)).then(() => toast("Prompt 已复制")).catch((error) => toast(error.message, true)).finally(() => { copyPrompt.disabled = false; }); return; }
+      if (copyPrompt) { event.preventDefault(); copyPrompt.disabled = true; copyText(state.handoffPrompt || sessionStorage.getItem(KEY.prompt)).then(() => toast("任务信息已复制")).catch((error) => toast(error.message, true)).finally(() => { copyPrompt.disabled = false; }); return; }
       const copyOpen = event.target.closest(".js-copy-open-teleagent");
       if (copyOpen) { event.preventDefault(); copyOpen.disabled = true; Promise.all([copyText(state.handoffPrompt || sessionStorage.getItem(KEY.prompt)), api(`/api/teleagent/runs/${encodeURIComponent(state.runId)}/start`, { method: "POST", body: "{}" }), api("/api/teleagent/focus", { method: "POST", body: "{}" })]).then(() => toast("本课内容已复制；请在 TeleAgent 新建任务后粘贴发送")).catch((error) => toast(error.message, true)).finally(() => { copyOpen.disabled = false; }); return; }
       const refresh = event.target.closest(".js-refresh-growth");

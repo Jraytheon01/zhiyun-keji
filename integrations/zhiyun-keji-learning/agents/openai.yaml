@@ -1,7 +1,7 @@
 interface:
   display_name: "智云课迹学习助手"
-  short_description: "基于真实课程证据完成复盘、互动检测与长期成长结果回流"
-  default_prompt: "Use $zhiyun-keji-learning to review this course with evidence and return structured learning results."
+  short_description: "基于真实课程证据完成四类学习互动并受控回流"
+  default_prompt: "Use $zhiyun-keji-learning to run the requested course learning scenario from its action and course ID."
 
 dependencies:
   tools:

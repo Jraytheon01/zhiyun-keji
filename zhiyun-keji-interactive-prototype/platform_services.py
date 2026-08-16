@@ -952,61 +952,24 @@ class TeleAgentService:
     def _prompt(run_id: str, learner: dict[str, Any], course: dict[str, Any] | None,
                 action: str, focus: str, parameters: dict[str, Any]) -> str:
         course_id = course.get("course_id", "") if course else ""
-        title = course.get("title", "当前学习记录") if course else "当前学习记录"
-        count = max(1, min(5, int(parameters.get("question_count") or 3)))
-        difficulty = str(parameters.get("difficulty") or "跟随课堂")
-        task = ACTION_LABELS[action]
-        common = (
-            "【智云课迹平台任务｜必须按以下协议执行】\n"
-            "1. 必须加载并严格执行 TeleAgent Skill：zhiyun-keji-learning；不要按普通聊天直接作答。\n"
-            "2. 该 Skill 的课程读取、对话组织和回流规范优先；只使用 zhiyun-learning MCP，"
-            "不要调用 meeting-assistant MCP。\n"
-            f"3. 固定任务标识：course_id={course_id}；run_id={run_id}；action={action}。"
-            "后续所有课程工具和 complete_learning_interaction 都必须原样使用这些标识。\n"
-            f"4. 学习者：{learner.get('display_name','当前学生')}；课程：《{title}》；"
-            f"本次任务：{task}；重点：{focus}。\n"
-            "5. 开始时先使用 get_course_summary(course_id)，涉及细节再使用 get_course_transcript "
-            "或 search_course_content(query, course_id=course_id) 读取课程依据；"
-            "重要结论标注课程原文或时间点。\n"
-            "6. 若 Skill 未加载、课程无权限或 course_id 不存在，请明确报告错误，不要编造课程内容。\n"
-        )
-        multi_turn_rule = (
-            "这是平台发起的多轮学习会话。首轮只需给出简短开场并提出一个问题，"
-            "同时告诉学习者：交流完成后发送‘结束复盘并回流课迹’。"
-            "在学习者明确结束前，不要调用 complete_learning_interaction，也不要声称平台已更新。"
-            "整个会话中持续保留学生问题、回答、你的提示和学生纠正，回流时按发生顺序提交。"
-        )
-        if action == "learning_check":
-            return common + multi_turn_rule + (
-                f"请围绕重点进行不超过 {count} 个回合的自然检测，问题层次为“{difficulty}”，每次只问一个问题；"
-                "回合数是上限，不要为凑数而重复出题。"
-                "既记录答案，也关注学生如何解释、是否使用提示、是否自我纠正。"
-                "结束时总结本次讨论发生了什么，不要直接修改长期画像。"
-                f"最后必须调用 complete_learning_interaction，run_id={run_id}，course_id={course_id}，"
-                "dialogue_turns 按顺序提交学生问题、回答、你的提示及学生纠正等关键原文。"
-                "平台 AI 会结合课程原文独立提炼误区、提示依赖、待验证项和长期记忆候选。"
-            )
-        if action == "course_review":
-            return common + multi_turn_rule + (
-                "请先邀请学生提出最想弄懂的问题，再围绕课程主线进行复盘和追问。"
-                f"结束后调用 complete_learning_interaction，run_id={run_id}，course_id={course_id}，"
-                "回流关键对话原文、复盘摘要和生成产物。"
-            )
-        if action == "mind_map":
-            return common + (
-                "请生成不超过三层的课程思维导图，重要节点附来源；完成后调用 "
-                f"complete_learning_interaction，run_id={run_id}，course_id={course_id}，"
-                "把关键对话和思维导图作为 artifact 回流平台。"
-            )
-        if action == "cross_course_review":
-            return common + (
-                "请使用 find_related_courses 找到相关历史讲解，说明联系和差异；结束后调用 "
-                f"complete_learning_interaction，run_id={run_id}，course_id={course_id} 回流关键对话。"
-            )
-        return common + (
-            "请先使用 get_learning_context 读取相关学习档案，再给出一个十分钟以内、可执行的建议；"
-            f"结束后调用 complete_learning_interaction，run_id={run_id}，course_id={course_id}。"
-        )
+        lines = [
+            "请使用“智云课迹学习助手”Skill（$zhiyun-keji-learning）执行本次任务。",
+            f"action={action}",
+            f"course_id={course_id}",
+            f"run_id={run_id}",
+        ]
+        if focus:
+            lines.append(f"focus={focus}")
+        if action == "learning_check" and parameters:
+            compact_parameters = {
+                key: value for key, value in parameters.items()
+                if key in {"question_count", "difficulty"} and value not in (None, "")
+            }
+            if compact_parameters:
+                lines.append(
+                    "parameters=" + json.dumps(compact_parameters, ensure_ascii=False, separators=(",", ":"))
+                )
+        return "\n".join(lines)
 
 
 def http_json(method: str, url: str, payload: dict[str, Any] | None = None,
