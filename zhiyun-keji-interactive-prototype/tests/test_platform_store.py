@@ -134,6 +134,27 @@ class PlatformStoreTest(unittest.TestCase):
         )
         self.assertEqual(run["bridge_session_id"], "ses_visible_123")
 
+    def test_delete_open_run_is_scoped_and_preserves_course(self):
+        self.store.create_run({
+            "run_id": "zyk_open_run", "learner_id": "1001", "phone": "13800001001",
+            "course_id": "990101", "course_title": "course", "action": "course_review",
+            "focus": "focus", "parameters": {}, "prompt": "test", "state": "running",
+        })
+        deleted = self.store.delete_open_run("1001", "zyk_open_run")
+        self.assertTrue(deleted["deleted"])
+        self.assertIsNone(self.store.get_run("zyk_open_run"))
+        self.assertIsNotNone(self.store.local_course("1001", "990101"))
+
+    def test_delete_open_run_rejects_completed_record(self):
+        self.store.create_run({
+            "run_id": "zyk_completed_run", "learner_id": "1001", "phone": "13800001001",
+            "course_id": "990101", "course_title": "course", "action": "learning_check",
+            "focus": "focus", "parameters": {}, "prompt": "test", "state": "completed",
+        })
+        with self.assertRaises(ValueError):
+            self.store.delete_open_run("1001", "zyk_completed_run")
+        self.assertIsNotNone(self.store.get_run("zyk_completed_run"))
+
     def test_completing_plan_records_reflection_without_changing_mastery(self):
         self.store.upsert_mastery("1001", "左右平移方向", False, "客观作答证据")
         before = self.store.growth("1001")["mastery"][0]

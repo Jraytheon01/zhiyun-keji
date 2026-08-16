@@ -470,6 +470,79 @@ class PlatformStore:
             ).fetchall()
         return [self.get_run(row["run_id"]) for row in rows if self.get_run(row["run_id"])]
 
+    def delete_open_run(self, learner_id: str, run_id: str) -> dict[str, Any]:
+        """Delete one unfinished TeleAgent task without touching its course or completed learning record."""
+        with self._lock, self.connect() as connection:
+            run = connection.execute(
+                "SELECT * FROM teleagent_run WHERE run_id=? AND learner_id=?",
+                (run_id, learner_id),
+            ).fetchone()
+            if not run:
+                raise KeyError("任务不存在或不属于当前学习者")
+            if str(run["state"]) in {"completed", "processing_result"}:
+                raise ValueError("已回流的学习记录不能当作未完成任务删除")
+
+            memory_rows = connection.execute(
+                """SELECT DISTINCT m.memory_id,m.vector_id,m.source_run_id
+                   FROM learning_memory m
+                   LEFT JOIN learning_memory_evidence e ON e.memory_id=m.memory_id
+                   WHERE m.learner_id=? AND (m.source_run_id=? OR e.run_id=?)""",
+                (learner_id, run_id, run_id),
+            ).fetchall()
+            connection.execute("DELETE FROM learning_memory_evidence WHERE run_id=?", (run_id,))
+            vector_ids: list[int] = []
+            for memory in memory_rows:
+                remaining = connection.execute(
+                    """SELECT e.run_id,e.course_id,e.turn_indexes_json
+                       FROM learning_memory_evidence e
+                       WHERE e.memory_id=? ORDER BY e.created_at DESC LIMIT 1""",
+                    (memory["memory_id"],),
+                ).fetchone()
+                if not remaining:
+                    connection.execute("DELETE FROM learning_memory WHERE memory_id=?", (memory["memory_id"],))
+                    vector_ids.append(int(memory["vector_id"]))
+                elif str(memory["source_run_id"]) == run_id:
+                    evidence = {
+                        "run_id": remaining["run_id"],
+                        "turn_indexes": json.loads(remaining["turn_indexes_json"] or "[]"),
+                    }
+                    connection.execute(
+                        """UPDATE learning_memory SET source_run_id=?,course_id=?,evidence_json=?,updated_at=?
+                           WHERE memory_id=?""",
+                        (remaining["run_id"], remaining["course_id"], json_text(evidence),
+                         now_text(), memory["memory_id"]),
+                    )
+
+            connection.execute("DELETE FROM dialogue_insight WHERE run_id=?", (run_id,))
+            connection.execute("DELETE FROM learning_dialogue_turn WHERE run_id=?", (run_id,))
+            connection.execute(
+                "DELETE FROM growth_plan WHERE learner_id=? AND source_run_id=?",
+                (learner_id, run_id),
+            )
+
+            event_rows = connection.execute(
+                "SELECT event_id,evidence_json FROM learning_event WHERE learner_id=?",
+                (learner_id,),
+            ).fetchall()
+            event_ids = []
+            for event in event_rows:
+                try:
+                    evidence = json.loads(event["evidence_json"] or "{}")
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(evidence, dict) and str(evidence.get("run_id") or "") == run_id:
+                    event_ids.append(str(event["event_id"]))
+            if event_ids:
+                marks = ",".join("?" for _ in event_ids)
+                connection.execute(f"DELETE FROM learning_event WHERE event_id IN ({marks})", event_ids)
+
+            connection.execute(
+                "DELETE FROM teleagent_run WHERE run_id=? AND learner_id=?",
+                (run_id, learner_id),
+            )
+            connection.execute("DELETE FROM growth_summary WHERE learner_id=?", (learner_id,))
+        return {"deleted": True, "run_id": run_id, "vector_ids": vector_ids}
+
     def add_archive_chat_message(self, learner_id: str, role: str, content: str,
                                  evidence: Any = None) -> dict[str, Any]:
         message = {

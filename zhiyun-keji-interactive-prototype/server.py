@@ -204,6 +204,13 @@ class Handler(BaseHTTPRequestHandler):
         path = unquote(split.path)
         query = parse_qs(split.query)
         try:
+            run_match = re.fullmatch(r"/api/teleagent/runs/([^/]+)", path)
+            if run_match:
+                learner_id = APP.learner_id(query)
+                deleted = APP.store.delete_open_run(learner_id, run_match.group(1))
+                APP.memory.delete_vectors(deleted.pop("vector_ids", []))
+                self.json_response(HTTPStatus.OK, deleted)
+                return
             match = re.fullmatch(r"/api/courses/([^/]+)", path)
             if not match:
                 self.json_response(HTTPStatus.NOT_FOUND, {"error": "not found"})

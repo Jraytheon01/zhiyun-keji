@@ -705,7 +705,7 @@
         const description = analyzed ? esc(run.result.summary || `已形成 ${relatedInsights.length} 条学习发现`)
           : processing || returned ? "对话已经回来，正在整理问题、理解变化和下一步。"
             : active ? "探讨结束后，在 TeleAgent 发送“结束复盘并回流课迹”。" : "重新从课程页开始这次探讨。";
-        return `<article class="return-card ${analyzed ? "is-complete" : active || processing ? "is-active" : ""}"><div class="return-state"><span></span>${esc(status)}</div><div><div class="meta-row"><span>${esc(run.course_title || "学习互动")}</span><span>${esc(timeText(run.updated_at))}</span></div><h3>${esc(ACTIONS[run.action] || "课程互动")} · ${esc(run.focus || "本课内容")}</h3><p>${description}</p><div class="actions">${analyzed ? `<button class="btn btn-secondary js-open-run" data-run-id="${esc(run.run_id)}">查看本次学习发现</button>` : active ? `<button class="btn btn-secondary js-focus-teleagent">回到 TeleAgent 继续</button>` : processing ? `<span class="gentle-status">正在为你整理，请稍候</span>` : `<button class="btn btn-ghost js-start-from-growth">重新选择课程</button>`}</div></div></article>`;
+        return `<article class="return-card ${analyzed ? "is-complete" : active || processing ? "is-active" : ""}"><div class="return-state"><span></span>${esc(status)}</div><div><div class="meta-row"><span>${esc(run.course_title || "学习互动")}</span><span>${esc(timeText(run.updated_at))}</span></div><h3>${esc(ACTIONS[run.action] || "课程互动")} · ${esc(run.focus || "本课内容")}</h3><p>${description}</p><div class="actions">${analyzed ? `<button class="btn btn-secondary js-open-run" data-run-id="${esc(run.run_id)}">查看本次学习发现</button>` : active ? `<button class="btn btn-secondary js-focus-teleagent">回到 TeleAgent 继续</button><button class="btn btn-delete js-delete-run" data-run-id="${esc(run.run_id)}" aria-label="删除这次交流任务">删除任务</button>` : processing ? `<span class="gentle-status">正在为你整理，请稍候</span>` : `<button class="btn btn-ghost js-start-from-growth">重新选择课程</button><button class="btn btn-delete js-delete-run" data-run-id="${esc(run.run_id)}" aria-label="删除这次交流任务">删除任务</button>`}</div></div></article>`;
       }).join("");
       tabs?.insertAdjacentHTML("afterend", `<section class="return-flow" aria-label="学习回流的四个步骤"><div class="flow-step"><b>01</b><span><strong>选择课程</strong><small>带上课程原文</small></span></div><div class="flow-step"><b>02</b><span><strong>在 TeleAgent 探讨</strong><small>提问、复盘或自测</small></span></div><div class="flow-step"><b>03</b><span><strong>结束并回流</strong><small>带回关键对话</small></span></div><div class="flow-step"><b>04</b><span><strong>形成长期记录</strong><small>留给下一次学习</small></span></div></section>
         <section class="return-layout"><div><div class="section-head"><div><div class="eyebrow">最近学习互动</div><h2>每次 TeleAgent 对话现在走到哪一步</h2></div><button class="btn btn-primary js-start-from-growth">选择课程开始新互动</button></div><div class="return-list">${runCards || `<div class="card archive-empty"><strong>还没有 TeleAgent 学习互动</strong><p>先从课程管理选择一门课，发送到 TeleAgent。</p></div>`}</div></div>
@@ -810,6 +810,29 @@
       if (view) { event.preventDefault(); setCourse(view.dataset.courseId); go("course-detail"); return; }
       const deleteTrigger = event.target.closest(".js-delete-course");
       if (deleteTrigger) { event.preventDefault(); deleteCourse(deleteTrigger); return; }
+      const deleteRun = event.target.closest(".js-delete-run");
+      if (deleteRun) {
+        event.preventDefault();
+        if (!window.confirm("删除这次交流任务？课程和已整理的学习记录不会受影响。")) return;
+        deleteRun.disabled = true;
+        const originalText = deleteRun.textContent;
+        deleteRun.textContent = "正在删除…";
+        api(withLearner(`/api/teleagent/runs/${encodeURIComponent(deleteRun.dataset.runId)}`), { method: "DELETE" })
+          .then(async () => {
+            if (state.runId === deleteRun.dataset.runId) {
+              state.runId = "";
+              localStorage.removeItem(KEY.run);
+            }
+            toast("交流任务已删除");
+            await hydrateGrowth("growth-overview");
+          })
+          .catch((error) => {
+            deleteRun.disabled = false;
+            deleteRun.textContent = originalText;
+            toast(error.message, true);
+          });
+        return;
+      }
       const related = event.target.closest(".js-related-course");
       if (related) { event.preventDefault(); setCourse(related.dataset.courseId); go("course-detail"); return; }
       const runLink = event.target.closest(".js-open-run");
