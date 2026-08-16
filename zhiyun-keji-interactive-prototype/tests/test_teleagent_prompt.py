@@ -51,6 +51,14 @@ class TeleAgentPromptTest(unittest.TestCase):
             "左右平移方向",
             {},
         )
+        self.assertEqual(
+            "请使用“智云课迹学习助手”执行本次任务。\n"
+            "action=course_review\n"
+            "course_id=990101\n"
+            "run_id=zyk_run_123\n"
+            "focus=左右平移方向",
+            prompt,
+        )
         self.assertIn("智云课迹学习助手", prompt)
         self.assertNotIn("zhiyun-keji-learning", prompt)
         self.assertIn("action=course_review", prompt)
